@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="googlebot" content="noindex, nofollow">
+<title>家庭投資儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0c10; --panel:#16161d; --panel2:#1b1b23; --line:#272730;
+    --ink:#ecebe8; --muted:#8b8b98; --brand:#f0883e; --brand2:#f6a85f;
+    --brand-soft:rgba(240,136,62,.13);
+    --up:#3fb950; --down:#f85149;
+    --c1:#f0883e; --c2:#4a9eda; --c3:#e8b04b; --c4:#6b6b7a; --c5:#9b7ad1; --c6:#54c2a8;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55}
+  .app{display:flex;min-height:100vh}
+  /* sidebar */
+  aside{width:212px;flex:0 0 212px;background:var(--panel);border-right:1px solid var(--line);
+    padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+  .logo{display:flex;align-items:center;gap:10px;padding:6px 8px 18px}
+  .logo .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand2));
+    display:grid;place-items:center;font-size:18px}
+  .logo b{font-size:16px;letter-spacing:.5px}
+  .nav{display:flex;flex-direction:column;gap:3px}
+  .nav button{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:var(--muted);
+    font-family:inherit;font-size:14.5px;font-weight:700;padding:11px 12px;border-radius:11px;cursor:pointer;text-align:left;transition:.13s}
+  .nav button .ic{font-size:17px;width:20px;text-align:center}
+  .nav button:hover{background:var(--panel2);color:var(--ink)}
+  .nav button.on{background:var(--brand-soft);color:var(--brand2)}
+  .side-foot{margin-top:18px;padding:12px 10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.8}
+  /* main */
+  main{flex:1;min-width:0;padding:26px 30px 70px}
+  .page-h{margin-bottom:20px}
+  .page-h h1{margin:0;font-size:27px;font-weight:800;letter-spacing:.5px}
+  .page-h p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  /* kpi */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:15px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:17px 18px}
+  .kpi .k-l{font-size:13px;color:var(--muted);font-weight:700}
+  .kpi .k-v{font-size:27px;font-weight:800;margin-top:7px;letter-spacing:.4px}
+  .kpi .k-s{font-size:13px;margin-top:5px;font-weight:700;color:var(--muted)}
+  /* card */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-top:18px}
+  .card h3{margin:0 0 16px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .card h3 .tag{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  /* allocation bars */
+  .bar-row{display:grid;grid-template-columns:88px 1fr auto;align-items:center;gap:14px;margin:13px 0}
+  .bar-row .lab{font-size:14px;font-weight:700;color:var(--muted)}
+  .track{height:11px;border-radius:99px;background:var(--panel2);overflow:hidden}
+  .track i{display:block;height:100%;border-radius:99px}
+  .bar-row .val{font-size:13px;font-weight:700;white-space:nowrap}
+  .bar-row .val span{color:var(--muted);margin-left:6px}
+  /* table */
+  .tbl-wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+  th,td{padding:10px 11px;text-align:right;white-space:nowrap}
+  th{color:var(--muted);font-weight:700;font-size:12.5px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--line)}
+  tbody tr:last-child{border-bottom:0}
+  tr.total td{border-top:1px solid var(--brand);font-weight:800;color:var(--ink)}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .muted{color:var(--muted)}
+  /* accordion */
+  .acc{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:12px;background:var(--panel)}
+  .acc-h{display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:center;
+    padding:15px 16px;cursor:pointer;transition:.13s}
+  .acc-h:hover{background:var(--panel2)}
+  .acc-h .chev{color:var(--brand);font-size:12px;transition:transform .15s}
+  .acc-h.open .chev{transform:rotate(90deg)}
+  .acc-h .nm{font-size:15.5px;font-weight:800}
+  .acc-h .nm small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:2px}
+  .acc-h .mv{font-size:15px;font-weight:800}
+  .acc-h .pl{font-size:13px;font-weight:700;text-align:right}
+  .acc-b{display:none;padding:2px 16px 14px;background:var(--panel2)}
+  .acc-b.open{display:block}
+  .search{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 15px;font-size:14px;
+    background:var(--panel);color:var(--ink);margin-bottom:6px;font-family:inherit}
+  .chart-box{position:relative;height:300px}
+  .chart-box.sm{height:270px}
+  .note{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.7}
+  .hide{display:none!important}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;font-size:13px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  /* mobile */
+  .menu-btn{display:none}
+  @media(max-width:860px){
+    aside{position:fixed;left:0;top:0;z-index:50;transform:translateX(-100%);transition:.22s;box-shadow:0 0 40px rgba(0,0,0,.5)}
+    aside.show{transform:none}
+    main{padding:18px 16px 70px}
+    .grid2{grid-template-columns:1fr}
+    .menu-btn{display:inline-grid;place-items:center;width:42px;height:42px;border-radius:11px;border:1px solid var(--line);
+      background:var(--panel);color:var(--ink);font-size:20px;margin-bottom:14px;cursor:pointer}
+    .page-h h1{font-size:23px}
+    .kpi .k-v{font-size:23px}
+  }
+  .backdrop{display:none}
+  .backdrop.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside id="side">
+    <div class="logo"><div class="mark">📈</div><b>投資儀表板</b></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      資料來源:Google Drive<br>持股明細-CLAUDE<br>基準日 <b id="asOf2"></b><br>
+      <span style="color:#6b6b7a">更新試算表後重讀即同步</span>
+    </div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
+  <main>
+    <button class="menu-btn" id="menuBtn">☰</button>
+
+    <!-- 總覽 -->
+    <section id="p-overview">
+      <div class="page-h"><h1>資產總覽</h1><p>家庭投資資產彙總・基準日 <span id="asOf"></span></p></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="card"><h3>📊 資產配置占比 <span class="tag">依現值</span></h3><div id="allocBars"></div></div>
+      <div class="grid2">
+        <div class="card"><h3>🏦 各帳戶 / 持有人 現值</h3><div id="acctBars"></div></div>
+        <div class="card"><h3>📋 各類別損益</h3><div class="tbl-wrap"><table id="catTable"></table></div></div>
+      </div>
+    </section>
+
+    <!-- 台股 -->
+    <section id="p-tw" class="hide">
+      <div class="page-h"><h1>🇹🇼 台股</h1><p>已歸戶・點帳戶可展開個人持股明細</p></div>
+      <div class="kpis" id="kpiTw"></div>
+      <div class="card"><h3>👥 各帳戶持股明細 <span class="tag">點列展開</span></h3>
+        <input class="search" id="twSearch" placeholder="🔍 搜尋代號或名稱(例:台積電、00631L)…">
+        <div id="twAcc"></div>
+      </div>
+      <div class="card"><h3>📈 台股個股彙總 <span class="tag">合併各帳戶</span></h3>
+        <div class="tbl-wrap"><table id="twSum"></table></div>
+      </div>
+    </section>
+
+    <!-- 美股 -->
+    <section id="p-us" class="hide">
+      <div class="page-h"><h1>🇺🇸 美股</h1><p>品翰 / 聖文 / 品安・點持有人可展開個人持股明細</p></div>
+      <div class="kpis" id="kpiUs"></div>
+      <div class="card"><h3>👥 各持有人持股明細 <span class="tag">點列展開</span></h3><div id="usAcc"></div></div>
+      <div class="card"><h3>📈 美股標的彙總 <span class="tag">三人合計</span></h3>
+        <div class="tbl-wrap"><table id="usSum"></table></div>
+      </div>
+    </section>
+
+    <!-- 基富通 -->
+    <section id="p-fund" class="hide">
+      <div class="page-h"><h1>💰 基富通基金</h1><p>持有人:陳朝龍</p></div>
+      <div class="kpis" id="kpiFund"></div>
+      <div class="grid2">
+        <div class="card"><h3>📋 基金持股明細</h3><div class="tbl-wrap"><table id="fundTable"></table></div></div>
+        <div class="card"><h3>🥧 基金配置</h3><div class="chart-box sm"><canvas id="cFund"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- 視覺化圖表 -->
+    <section id="p-charts" class="hide">
+      <div class="page-h"><h1>📊 視覺化圖表</h1><p>整體資產與損益分析</p></div>
+      <div class="grid2">
+        <div class="card"><h3>🥧 資產配置</h3><div class="chart-box sm"><canvas id="cAlloc"></canvas></div></div>
+        <div class="card"><h3>🏦 各帳戶 / 持有人現值</h3><div class="chart-box sm"><canvas id="cAcct"></canvas></div></div>
+      </div>
+      <div class="card"><h3>🏆 前十大持股</h3><div class="chart-box"><canvas id="cTop"></canvas></div></div>
+      <div class="grid2">
+        <div class="card"><h3>📈 歷年已實現損益</h3><div class="chart-box sm"><canvas id="cYear"></canvas></div></div>
+        <div class="card"><h3>⚖️ 各類別未實現損益</h3><div class="chart-box sm"><canvas id="cCat"></canvas></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   資料區(基準日 2026/6/30,來源:持股明細-CLAUDE,已雙向勾稽)
+   更新:改 DATA 數字,或請 Claude 重讀 Drive 重新產生。
+============================================================ */
+const DATA = {
+  asOf:"2026/6/30",
+  tw:[
+    {code:"2330",name:"台積電",px:2410,div:264744,lots:[["陳朝龍",4300,4586000,10363000],["陳品安-合庫",150,272250,361500]]},
+    {code:"00631L",name:"台灣50正2",px:38.42,div:0,lots:[["陳朝龍",115000,4197870,4418300],["陳品安-合庫",65000,2418250,2497300]]},
+    {code:"006208",name:"富邦台50",px:250.2,div:157693,lots:[["陳品安-永豐",10177,918931,2546285],["陳品安-合庫",2000,343200,500400],["陳朝龍",2000,391000,500400]]},
+    {code:"00687B",name:"國泰美債20年",px:28.55,div:130764,lots:[["陳品安-永豐",32935,996854,940294]]},
+    {code:"00679B",name:"元大美債20年",px:27.44,div:99245,lots:[["陳品安-永豐",28942,844502,794168]]},
+    {code:"00725B",name:"國泰投資級公司債",px:36.04,div:21510,lots:[["陳朝龍",15000,528310,540600],["玉山",9000,339620,324360]]},
+    {code:"00892",name:"富邦台灣半導體",px:44.8,div:28623,lots:[["陳朝龍",15000,648780,672000]]},
+    {code:"00830",name:"國泰費城半導體",px:97.8,div:139410,lots:[["陳朝龍",4000,363200,391200]]},
+    {code:"6409",name:"旭隼",px:1085,div:0,lots:[["陳朝龍",500,407250,542500]]},
+    {code:"6179",name:"亞通",px:25.5,div:0,lots:[["陳朝龍",10000,360000,255000]]},
+  ],
+  funds:[
+    ["ALI022","安聯四季成長組合基金",15925.90,250992,423151,26.57],
+    ["ALI043","安聯台灣智慧基金",3486.50,340595,1476254,423.42],
+    ["NOM015","野村優質基金",3126.00,334296,1368219,437.69],
+    ["NOM124","野村動態配置多重資產",126852.37,1612645,2250069,17.7377],
+    ["ABI042","聯博多元資產收益組合基金",23305.35,150000,152184,6.53],
+    ["NOM044","野村多元收益多重資產基金",22197.99,150000,154267,6.9496],
+  ],
+  us:{
+    "品翰":{cash:656797,rows:[
+      ["VOO",203.51,2673023,4085710,681.01,445.54],["QQQ",148.16,2167251,3162647,724.08,496.19],
+      ["IEF",1604.72,4510303,4497026,95.06,95.34],["TSM",268,3170007,3595581,455.10,401.23],
+      ["ARKK",646.99,1651132,1537882,80.63,86.57],["QLD",170,459312,469487,93.68,91.65],
+      ["SSO",125,240446,244500,66.35,65.25]]},
+    "聖文":{cash:304724,rows:[
+      ["VOO",110,1998444,2208379,681.01,616.27],["QQQ",78,1408413,1664979,724.08,612.50],
+      ["ARKK",810,1950803,1925348,80.63,81.70],["SSO",255,498065,498779,66.35,66.25],
+      ["TSM",35,454632,469572,455.10,440.62],["QLD",90,246164,248552,93.68,92.78]]},
+    "品安":{cash:0,rows:[
+      ["QQQ",193,3446663,4119755,724.08,605.78],["IEF",465,1322552,1303101,95.06,96.48],
+      ["VOO",63,1161052,1264799,681.01,625.15],["ARKK",408,964200,969805,80.63,80.16],
+      ["QLD",100,275638,276169,93.68,93.50]]}
+  },
+  twCash:{"陳朝龍":25282,"陳品安-永豐":1000100,"陳品安-合庫":3605062,"玉山":0,"林張玉":2409574},
+  pnl:[
+    ["台股",17616017,25647308,7040018,5581657,8031290],
+    ["基富通基金",2838528,5824144,0,1241962,2985616],
+    ["美股-品翰",14871474,17592833,656797,5830407,2721359],
+    ["美股-聖文",6556521,7015609,304724,2599300,459088],
+    ["美股-品安",7170105,7933629,0,699176,763524],
+  ],
+  yearRealized:[["108",165194],["109",478894],["110",1348904],["111",203457],["112",13442],["113",702101],["114",5832089],["115*",7208427]],
+};
+
+/* ============================ 工具 ============================ */
+const NT=n=>"NT$"+Math.round(n).toLocaleString("en-US");
+const NTk=n=>{const a=Math.abs(n);if(a>=1e8)return(n<0?"-":"")+(a/1e8).toFixed(2)+"億";
+  if(a>=1e4)return(n<0?"-":"")+Math.round(a/1e4).toLocaleString()+"萬";return Math.round(n).toLocaleString();};
+const pct=n=>(n>=0?"+":"")+n.toFixed(2)+"%";
+const cl=n=>n>=0?"up":"down";
+const sgn=n=>(n>=0?"+":"")+NT(n);
+const sgk=n=>(n>=0?"+":"")+NTk(n);
+const PAL=["#f0883e","#4a9eda","#e8b04b","#9b7ad1","#54c2a8","#d9695f","#7f9b5b","#c98fb0","#6b9ec0","#cf9b5b"];
+
+function flatten(){const o=[];
+  DATA.tw.forEach(s=>s.lots.forEach(([ow,sh,c,v])=>o.push({cat:"台股",owner:ow,code:s.code,name:s.name,shares:sh,cost:c,value:v,px:s.px,div:s.div})));
+  DATA.funds.forEach(([code,name,sh,c,v,nav])=>o.push({cat:"基金",owner:"基富通-陳朝龍",code,name,shares:sh,cost:c,value:v,px:nav}));
+  Object.entries(DATA.us).forEach(([ow,d])=>d.rows.forEach(([sym,sh,c,v,px,cpx])=>o.push({cat:"美股",owner:ow,code:sym,name:sym,shares:sh,cost:c,value:v,px,cpx})));
+  return o;}
+const ALL=flatten();
+const T=(()=>{let cost=0,val=0,cash=0,real=0;DATA.pnl.forEach(r=>{cost+=r[1];val+=r[2];cash+=r[3];real+=r[4];});
+  return{cost,val,cash,real,unreal:val-cost,asset:val+cash};})();
+
+function kpis(arr){return arr.map(k=>`<div class="kpi"><div class="k-l">${k.l}</div>
+  <div class="k-v ${k.vc||''}">${k.v}</div>${k.s?`<div class="k-s ${k.sc||''}">${k.s}</div>`:''}</div>`).join("");}
+
+/* ============================ Nav ============================ */
+const PAGES=[["overview","🏠","總覽"],["tw","🇹🇼","台股"],["us","🇺🇸","美股"],["fund","💰","基富通"],["charts","📊","視覺化圖表"]];
+const nav=document.getElementById("nav");
+PAGES.forEach(([id,ic,label],i)=>{
+  const b=document.createElement("button");b.className=i===0?"on":"";b.dataset.id=id;
+  b.innerHTML=`<span class="ic">${ic}</span>${label}`;
+  b.onclick=()=>{document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+    PAGES.forEach(([pid])=>document.getElementById("p-"+pid).classList.toggle("hide",pid!==id));
+    closeSide();window.scrollTo({top:0});
+    setTimeout(()=>CHARTS.forEach(c=>{try{c.resize();}catch(e){}}),60);};
+  nav.appendChild(b);
+});
+const side=document.getElementById("side"),bd=document.getElementById("backdrop");
+function closeSide(){side.classList.remove("show");bd.classList.remove("show");}
+document.getElementById("menuBtn").onclick=()=>{side.classList.add("show");bd.classList.add("show");};
+bd.onclick=closeSide;
+
+/* ============================ Header ============================ */
+document.getElementById("asOf").textContent=DATA.asOf;
+document.getElementById("asOf2").textContent=DATA.asOf;
+
+/* ============================ 總覽 ============================ */
+document.getElementById("kpis").innerHTML=kpis([
+  {l:"資產總額(含現金)",v:NT(T.asset)},
+  {l:"投資現值",v:NT(T.val)},
+  {l:"未實現損益",v:sgk(T.unreal),vc:cl(T.unreal),s:pct(T.unreal/T.cost*100),sc:cl(T.unreal)},
+  {l:"已實現損益(累計)",v:sgk(T.real),vc:"up"},
+  {l:"總成本",v:NT(T.cost)},
+  {l:"可動用現金",v:NT(T.cash)},
+]);
+// 配置 bars
+const usVal=DATA.pnl[2][2]+DATA.pnl[3][2]+DATA.pnl[4][2];
+const alloc=[["台股",DATA.pnl[0][2],"var(--c1)"],["美股",usVal,"var(--c2)"],["基富通",DATA.pnl[1][2],"var(--c3)"],["現金",T.cash,"var(--c4)"]];
+const allocMax=Math.max(...alloc.map(a=>a[1])),allocSum=T.val+T.cash;
+document.getElementById("allocBars").innerHTML=alloc.map(([n,v,c])=>`<div class="bar-row">
+  <div class="lab">${n}</div><div class="track"><i style="width:${v/allocMax*100}%;background:${c}"></i></div>
+  <div class="val">${NTk(v)}<span>${(v/allocSum*100).toFixed(1)}%</span></div></div>`).join("");
+// 帳戶 bars
+const acctMap={};ALL.forEach(h=>acctMap[h.owner]=(acctMap[h.owner]||0)+h.value);
+const acctArr=Object.entries(acctMap).sort((a,b)=>b[1]-a[1]);
+const acctMax=Math.max(...acctArr.map(a=>a[1]));
+document.getElementById("acctBars").innerHTML=acctArr.map(([n,v],i)=>`<div class="bar-row">
+  <div class="lab" style="font-size:13px">${n}</div><div class="track"><i style="width:${v/acctMax*100}%;background:${PAL[i%PAL.length]}"></i></div>
+  <div class="val">${NTk(v)}</div></div>`).join("");
+// 類別損益表
+const ct=[`<thead><tr><th>類別</th><th>現值</th><th>未實現</th><th>報酬率</th></tr></thead><tbody>`];
+DATA.pnl.forEach(([n,c,v])=>{const p=v-c;ct.push(`<tr><td>${n}</td><td>${NTk(v)}</td>
+  <td class="${cl(p)}">${sgk(p)}</td><td class="${cl(p)}">${pct(p/c*100)}</td></tr>`);});
+ct.push(`<tr class="total"><td>總計</td><td>${NTk(T.val)}</td><td class="${cl(T.unreal)}">${sgk(T.unreal)}</td>
+  <td class="${cl(T.unreal)}">${pct(T.unreal/T.cost*100)}</td></tr></tbody>`);
+document.getElementById("catTable").innerHTML=ct.join("");
+
+/* ============================ Accordion 共用 ============================ */
+function buildAccordion(container,groups){
+  container.innerHTML=groups.map((g,gi)=>{
+    const pl=g.val-g.cost;
+    const rows=g.items.map(it=>{const p=it.value-it.cost;return `<tr>
+      <td>${it.label}</td><td>${it.qty}</td><td>${NTk(it.cost)}</td><td>${NTk(it.value)}</td>
+      <td class="${cl(p)}">${sgk(p)}</td><td class="${cl(p)}">${pct(p/it.cost*100)}</td></tr>`;}).join("");
+    return `<div class="acc">
+      <div class="acc-h" data-g="${gi}">
+        <span class="chev">▶</span>
+        <div class="nm">${g.name}${g.sub?`<small>${g.sub}</small>`:''}</div>
+        <div class="mv">${NTk(g.val)}</div>
+        <div class="pl ${cl(pl)}">${sgk(pl)}<br><span style="font-size:11.5px">${pct(pl/g.cost*100)}</span></div>
+      </div>
+      <div class="acc-b"><div class="tbl-wrap"><table>
+        <thead><tr><th>標的</th><th>股數</th><th>成本</th><th>現值</th><th>損益</th><th>報酬率</th></tr></thead>
+        <tbody>${rows}</tbody></table></div></div>
+    </div>`;
+  }).join("");
+  container.querySelectorAll(".acc-h").forEach(h=>h.onclick=()=>{
+    h.classList.toggle("open");h.nextElementSibling.classList.toggle("open");
+    h.querySelector(".chev").textContent=h.classList.contains("open")?"▼":"▶";
+  });
+}
+
+/* ============================ 台股 ============================ */
+let twCost=0,twVal=0,twDiv=0;
+DATA.tw.forEach(s=>{s.lots.forEach(l=>{twCost+=l[2];twVal+=l[3];});twDiv+=s.div;});
+document.getElementById("kpiTw").innerHTML=kpis([
+  {l:"台股現值",v:NT(twVal)},{l:"台股成本",v:NT(twCost)},
+  {l:"未實現損益",v:sgk(twVal-twCost),vc:cl(twVal-twCost),s:pct((twVal-twCost)/twCost*100),sc:cl(twVal-twCost)},
+  {l:"累計配息",v:NT(twDiv),vc:"up"},
+]);
+const TW_ORDER=["陳朝龍","陳品安-永豐","陳品安-合庫","玉山","林張玉"];
+function twGroups(q){
+  return TW_ORDER.map(acc=>{
+    let items=ALL.filter(h=>h.cat==="台股"&&h.owner===acc);
+    if(q)items=items.filter(h=>h.name.includes(q)||h.code.toLowerCase().includes(q.toLowerCase()));
+    const cost=items.reduce((a,h)=>a+h.cost,0),val=items.reduce((a,h)=>a+h.value,0);
+    const cash=DATA.twCash[acc]||0;
+    return {acc,cost,val,cash,
+      name:acc,sub:`${items.length} 檔・帳戶餘額 ${NTk(cash)}`,
+      items:items.sort((a,b)=>b.value-a.value).map(h=>({label:`${h.code} ${h.name}`,qty:h.shares.toLocaleString(),cost:h.cost,value:h.value}))};
+  }).filter(g=>g.items.length>0||(!q&&g.cash>0));
+}
+function renderTw(q){
+  const gs=twGroups(q).map(g=>({...g,cost:g.cost||1}));
+  buildAccordion(document.getElementById("twAcc"),gs.filter(g=>g.items.length>0||g.cash>0).map(g=>({
+    name:g.name,sub:g.sub,val:g.val,cost:g.items.length?g.cost:1,items:g.items
+  })));
+}
+renderTw("");
+document.getElementById("twSearch").addEventListener("input",e=>renderTw(e.target.value.trim()));
+// 個股彙總
+const tsum=[`<thead><tr><th>代號 / 名稱</th><th>現價</th><th>總股數</th><th>成本</th><th>現值</th><th>損益</th><th>報酬率</th><th>帳戶</th></tr></thead><tbody>`];
+DATA.tw.forEach(s=>{const c=s.lots.reduce((a,l)=>a+l[2],0),v=s.lots.reduce((a,l)=>a+l[3],0),sh=s.lots.reduce((a,l)=>a+l[1],0),p=v-c;
+  const accs=s.lots.map(l=>l[0].replace("陳品安-","").replace("陳朝龍","朝龍")).join("、");
+  tsum.push(`<tr><td><b>${s.code}</b> ${s.name}</td><td>${s.px}</td><td>${sh.toLocaleString()}</td>
+    <td>${NTk(c)}</td><td>${NTk(v)}</td><td class="${cl(p)}">${sgk(p)}</td><td class="${cl(p)}">${pct(p/c*100)}</td>
+    <td class="muted" style="font-size:12px">${accs}</td></tr>`);});
+tsum.push(`<tr class="total"><td>合計</td><td></td><td></td><td>${NTk(twCost)}</td><td>${NTk(twVal)}</td>
+  <td class="${cl(twVal-twCost)}">${sgk(twVal-twCost)}</td><td class="${cl(twVal-twCost)}">${pct((twVal-twCost)/twCost*100)}</td><td></td></tr></tbody>`);
+document.getElementById("twSum").innerHTML=tsum.join("");
+
+/* ============================ 美股 ============================ */
+let usCost=0,usVal2=0,usCash=0;
+Object.values(DATA.us).forEach(d=>{d.rows.forEach(r=>{usCost+=r[2];usVal2+=r[3];});usCash+=d.cash;});
+document.getElementById("kpiUs").innerHTML=kpis([
+  {l:"美股現值",v:NT(usVal2)},{l:"美股成本",v:NT(usCost)},
+  {l:"未實現損益",v:sgk(usVal2-usCost),vc:cl(usVal2-usCost),s:pct((usVal2-usCost)/usCost*100),sc:cl(usVal2-usCost)},
+  {l:"美股現金",v:NT(usCash)},
+]);
+const usG=Object.entries(DATA.us).map(([ow,d])=>{
+  const cost=d.rows.reduce((a,r)=>a+r[2],0),val=d.rows.reduce((a,r)=>a+r[3],0);
+  return {name:ow,sub:`${d.rows.length} 檔・現金 ${NTk(d.cash)}`,val,cost,
+    items:d.rows.slice().sort((a,b)=>b[3]-a[3]).map(r=>({label:r[0],qty:r[1].toLocaleString(),cost:r[2],value:r[3]}))};
+});
+buildAccordion(document.getElementById("usAcc"),usG);
+// 美股標的彙總
+const symMap={};Object.values(DATA.us).forEach(d=>d.rows.forEach(([sym,sh,c,v,px])=>{
+  if(!symMap[sym])symMap[sym]={sym,sh:0,c:0,v:0,px};symMap[sym].sh+=sh;symMap[sym].c+=c;symMap[sym].v+=v;}));
+const usSumArr=Object.values(symMap).sort((a,b)=>b.v-a.v);
+const usum=[`<thead><tr><th>標的</th><th>收盤價$</th><th>總股數</th><th>成本</th><th>現值</th><th>損益</th><th>報酬率</th></tr></thead><tbody>`];
+usSumArr.forEach(s=>{const p=s.v-s.c;usum.push(`<tr><td><b>${s.sym}</b></td><td>${s.px}</td><td>${s.sh.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+  <td>${NTk(s.c)}</td><td>${NTk(s.v)}</td><td class="${cl(p)}">${sgk(p)}</td><td class="${cl(p)}">${pct(p/s.c*100)}</td></tr>`);});
+usum.push(`<tr class="total"><td>合計</td><td></td><td></td><td>${NTk(usCost)}</td><td>${NTk(usVal2)}</td>
+  <td class="${cl(usVal2-usCost)}">${sgk(usVal2-usCost)}</td><td class="${cl(usVal2-usCost)}">${pct((usVal2-usCost)/usCost*100)}</td></tr></tbody>`);
+document.getElementById("usSum").innerHTML=usum.join("");
+
+/* ============================ 基富通 ============================ */
+const fc=DATA.funds.reduce((a,f)=>a+f[3],0),fv=DATA.funds.reduce((a,f)=>a+f[4],0);
+document.getElementById("kpiFund").innerHTML=kpis([
+  {l:"基金現值",v:NT(fv)},{l:"基金成本",v:NT(fc)},
+  {l:"未實現損益",v:sgk(fv-fc),vc:cl(fv-fc),s:pct((fv-fc)/fc*100),sc:cl(fv-fc)},
+  {l:"檔數",v:DATA.funds.length+" 檔"},
+]);
+const fr=[`<thead><tr><th>基金</th><th>淨值</th><th>成本</th><th>現值</th><th>損益</th><th>報酬率</th></tr></thead><tbody>`];
+DATA.funds.slice().sort((a,b)=>b[4]-a[4]).forEach(([code,name,sh,c,v,nav])=>{const p=v-c;
+  fr.push(`<tr><td><b>${code}</b> ${name}</td><td>${nav}</td><td>${NTk(c)}</td><td>${NTk(v)}</td>
+    <td class="${cl(p)}">${sgk(p)}</td><td class="${cl(p)}">${pct(p/c*100)}</td></tr>`);});
+fr.push(`<tr class="total"><td>合計</td><td></td><td>${NTk(fc)}</td><td>${NTk(fv)}</td>
+  <td class="${cl(fv-fc)}">${sgk(fv-fc)}</td><td class="${cl(fv-fc)}">${pct((fv-fc)/fc*100)}</td></tr></tbody>`);
+document.getElementById("fundTable").innerHTML=fr.join("");
+
+/* ============================ 圖表 ============================ */
+const CHARTS=[];
+function drawCharts(){
+  if(typeof Chart==="undefined")return;
+  Chart.defaults.color="#8b8b98";Chart.defaults.font.family="'Microsoft JhengHei',sans-serif";
+  Chart.defaults.animation=false;Chart.defaults.maintainAspectRatio=false;
+  const grid="rgba(255,255,255,.06)";
+  const reg=c=>{CHARTS.push(c);return c;};
+  const dough=(id,labels,data,colors)=>reg(new Chart(document.getElementById(id),{type:"doughnut",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:"#16161d"}]},
+    options:{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:12,padding:10}},
+      tooltip:{callbacks:{label:c=>` ${c.label}: ${NT(c.raw)}`}}},cutout:"58%"}}));
+  const hbar=(id,labels,data,colors)=>reg(new Chart(document.getElementById(id),{type:"bar",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:6}]},
+    options:{indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+NT(c.raw)}}},
+      scales:{x:{grid:{color:grid},ticks:{callback:v=>NTk(v)}},y:{grid:{display:false}}}}}));
+  const vbar=(id,labels,data,colors)=>reg(new Chart(document.getElementById(id),{type:"bar",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:6}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+NT(c.raw)}}},
+      scales:{y:{grid:{color:grid},ticks:{callback:v=>NTk(v)}},x:{grid:{display:false}}}}}));
+
+  dough("cFund",DATA.funds.map(f=>f[1]),DATA.funds.map(f=>f[4]),PAL);
+  dough("cAlloc",alloc.map(a=>a[0]),alloc.map(a=>a[1]),["#f0883e","#4a9eda","#e8b04b","#6b6b7a"]);
+  hbar("cAcct",acctArr.map(a=>a[0]),acctArr.map(a=>a[1]),acctArr.map((_,i)=>PAL[i%PAL.length]));
+  const codeMap={};ALL.forEach(h=>codeMap[h.name]=(codeMap[h.name]||0)+h.value);
+  const top=Object.entries(codeMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  hbar("cTop",top.map(t=>t[0]),top.map(t=>t[1]),top.map((_,i)=>PAL[i%PAL.length]));
+  vbar("cYear",DATA.yearRealized.map(y=>y[0]+"年"),DATA.yearRealized.map(y=>y[1]),DATA.yearRealized.map(()=>"#3fb950"));
+  vbar("cCat",DATA.pnl.map(p=>p[0]),DATA.pnl.map(p=>p[2]-p[1]),DATA.pnl.map(p=>(p[2]-p[1])>=0?"#3fb950":"#f85149"));
+}
+drawCharts();
+</script>
+</body>
+</html>
