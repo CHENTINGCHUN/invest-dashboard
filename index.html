@@ -186,7 +186,9 @@
    更新:改 DATA 數字,或請 Claude 重讀 Drive 重新產生。
 ============================================================ */
 /* ===== FEED 自動更新:發布 CSV 後把網址填進 FEED_URL 即自動抓最新;留空=用內建資料 ===== */
-const FEED_URL="";
+const FEED_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vTaGEDeoEMK9eQrrg1kpVJgnPP97yXCs34r3ZMZis_3ajWSx9lD56yRqsxQI3EjYFikLorIRLN4iOAp/pub?gid=0&single=true&output=csv";
+// Google 匯入會吃掉開頭 0 的純數字代號,補回台股慣用寫法
+function fixTwCode(c){const M={"6208":"006208","892":"00892","830":"00830"};return M[c]||c;}
 function parseFeed(text){
   const D={asOf:"",tw:[],funds:[],us:{},twCash:{},pnl:[],yearRealized:[]};
   const twMap={};
@@ -195,7 +197,7 @@ function parseFeed(text){
     const r=line.split(",").map(s=>s.trim());
     const t=(r[0]||"").toUpperCase();
     if(t==="META"&&r[1]==="asOf")D.asOf=r[2];
-    else if(t==="TW"){const c=r[1];if(!twMap[c]){twMap[c]={code:c,name:r[2],px:+r[3],div:+r[4]||0,lots:[]};D.tw.push(twMap[c]);}twMap[c].lots.push([r[5],+r[6],+r[7],+r[8]]);}
+    else if(t==="TW"){const c=fixTwCode(r[1]);if(!twMap[c]){twMap[c]={code:c,name:r[2],px:+r[3],div:+r[4]||0,lots:[]};D.tw.push(twMap[c]);}twMap[c].lots.push([r[5],+r[6],+r[7],+r[8]]);}
     else if(t==="US"){const o=r[1];if(!D.us[o])D.us[o]={cash:0,rows:[]};D.us[o].rows.push([r[2],+r[3],+r[4],+r[5],+r[6],+r[7]]);}
     else if(t==="FUND")D.funds.push([r[1],r[2],+r[3],+r[4],+r[5],+r[6]]);
     else if(t==="CASH"&&r[1]==="tw")D.twCash[r[2]]=+r[3];
