@@ -186,25 +186,43 @@
    更新:改 DATA 數字,或請 Claude 重讀 Drive 重新產生。
 ============================================================ */
 /* ===== FEED 自動更新:發布 CSV 後把網址填進 FEED_URL 即自動抓最新;留空=用內建資料 ===== */
-const FEED_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vTaGEDeoEMK9eQrrg1kpVJgnPP97yXCs34r3ZMZis_3ajWSx9lD56yRqsxQI3EjYFikLorIRLN4iOAp/pub?gid=0&single=true&output=csv";
-// Google 匯入會吃掉開頭 0 的純數字代號,補回台股慣用寫法
-function fixTwCode(c){const M={"6208":"006208","892":"00892","830":"00830"};return M[c]||c;}
+const FEED_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vQaIeOBVmyYgktkGAUjzm7yJFeYTNQSQl4-CP3SDRUqjFxo3VSAxm6iC8-Z9GIvbWKbeEBM9-2IBF_K/pub?gid=1815973120&single=true&output=csv";
+// 數字清洗:去引號/逗號/空格/百分比,處理負號
+function num(x){if(x==null)return 0;x=(""+x).replace(/[",\s%]/g,"");if(x===""||x==="-")return 0;const n=parseFloat(x);return isNaN(n)?0:n;}
+// 正規 CSV 解析(處理引號內逗號)
+function parseCSV(text){const rows=[];let row=[],f="",q=false;text=text.replace(/\r/g,"");
+  for(let i=0;i<text.length;i++){const ch=text[i];
+    if(q){if(ch=='"'){if(text[i+1]=='"'){f+='"';i++;}else q=false;}else f+=ch;}
+    else{if(ch=='"')q=true;else if(ch==','){row.push(f);f="";}else if(ch=='\n'){row.push(f);rows.push(row);row=[];f="";}else f+=ch;}}
+  if(f.length||row.length){row.push(f);rows.push(row);}return rows;}
+// 股名→[代號,累計配息](feed 台股用股名,補上代號與配息)
+const TWMETA={"台積電":["2330",264744],"台灣50正2":["00631L",0],"富邦台50":["006208",157693],
+  "國泰美債20":["00687B",130764],"元大美債20":["00679B",99245],"國泰投資級公司債":["00725B",21510],
+  "富邦台灣半導體":["00892",28623],"國泰費城半導體":["00830",139410],"旭隼":["6409",0],"亞通":["6179",0]};
+// 讀「儀表板FEED」2D 版面:台股左側(A-G)、CASH/PNL/YEAR 右側欄(J-Q)、基金與美股表在下方
 function parseFeed(text){
+  const rows=parseCSV(text);
   const D={asOf:"",tw:[],funds:[],us:{},twCash:{},pnl:[],yearRealized:[]};
-  const twMap={};
-  text.replace(/\r/g,"").split("\n").forEach(line=>{
-    if(!line.trim())return;
-    const r=line.split(",").map(s=>s.trim());
-    const t=(r[0]||"").toUpperCase();
-    if(t==="META"&&r[1]==="asOf")D.asOf=r[2];
-    else if(t==="TW"){const c=fixTwCode(r[1]);if(!twMap[c]){twMap[c]={code:c,name:r[2],px:+r[3],div:+r[4]||0,lots:[]};D.tw.push(twMap[c]);}twMap[c].lots.push([r[5],+r[6],+r[7],+r[8]]);}
-    else if(t==="US"){const o=r[1];if(!D.us[o])D.us[o]={cash:0,rows:[]};D.us[o].rows.push([r[2],+r[3],+r[4],+r[5],+r[6],+r[7]]);}
-    else if(t==="FUND")D.funds.push([r[1],r[2],+r[3],+r[4],+r[5],+r[6]]);
-    else if(t==="CASH"&&r[1]==="tw")D.twCash[r[2]]=+r[3];
-    else if(t==="PNL")D.pnl.push([r[1],+r[2],+r[3],+r[4],+r[5],+r[6]]);
-    else if(t==="YEAR")D.yearRealized.push([r[1],+r[2]]);
+  const twMap={},USHDR={"品翰":1,"聖文":1,"品安":1,"帳戶":1};
+  rows.forEach(F=>{
+    const g=i=>(F[i]==null?"":(""+F[i]).trim());
+    const c0=g(0),c1=g(1),c2=g(2),c9=g(9);
+    if(c0==="TW"&&c1&&c1!=="基富通"&&c1!=="帳戶"&&c2){                 // 台股歸戶
+      const m=TWMETA[c2]||["",0];
+      if(!twMap[c2]){twMap[c2]={code:m[0],name:c2,px:num(g(6)),div:m[1],lots:[]};D.tw.push(twMap[c2]);}
+      twMap[c2].lots.push([c1,num(g(3)),num(g(4)),num(g(5))]);
+    } else if(c0==="TW"&&c1==="基富通"&&g(3)&&g(3)!=="總計"&&g(3).indexOf("/")<0){ // 基富通基金
+      D.funds.push([g(3),g(4),num(g(5)),num(g(6)),num(g(7)),num(g(12))]);
+    } else if(c0==="US"&&c2&&!USHDR[c2]){                              // 美股
+      const o=c1;if(!D.us[o])D.us[o]={cash:0,rows:[]};
+      D.us[o].rows.push([c2,num(g(10)),num(g(3)),num(g(4)),num(g(9)),num(g(8))]);
+    }
+    if(c0===""&&g(3).indexOf("/")>=0)D.asOf=g(3);                     // 基金總計列日期
+    if(c9==="CASH"){const cat=g(10),o=g(11),a=num(g(12));
+      if(cat==="TW")D.twCash[o]=a; else if(cat==="US"){if(!D.us[o])D.us[o]={cash:0,rows:[]};D.us[o].cash=a;}}
+    else if(c9==="PNL"){const lb=g(11);if(lb&&g(12)!=="成本"&&g(12)!=="")D.pnl.push([lb,num(g(12)),num(g(13)),num(g(14)),num(g(15)),num(g(16))]);}
+    else if(c9==="YEAR"){if(g(10))D.yearRealized.push([g(10),num(g(11))]);}
   });
-  D.pnl.forEach(p=>{if(p[0].indexOf("美股-")===0){const o=p[0].slice(3);if(D.us[o])D.us[o].cash=p[3];}});
   return (D.tw.length&&D.pnl.length)?D:null;
 }
 async function loadData(){
