@@ -489,6 +489,9 @@ function drawCharts(){
   vbar("cCat",DATA.pnl.map(p=>p[0]),DATA.pnl.map(p=>p[2]-p[1]),DATA.pnl.map(p=>(p[2]-p[1])>=0?"#3fb950":"#f85149"));
 }
 drawCharts();
+// 開放給下方「SOP 監測」區塊使用(持股現值 + 總資產)
+window.__DATA=DATA; window.__T=T; window.__ALL=ALL;
+window.dispatchEvent(new Event("dash-ready"));
 })();
 </script>
 
@@ -505,7 +508,7 @@ drawCharts();
     const h=rows.findIndex(r=>r[0]&&r[0].indexOf("標的")===0); if(h<0)return;
     const data=rows.slice(h+1).filter(r=>r[0]&&r[1]);
     const box=document.createElement("section");
-    box.style.cssText="max-width:1100px;margin:28px auto;padding:16px;font-family:inherit;color:inherit;";
+    box.className="card";
     let html='<h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">今日 SOP 動作</h2>'
       +'<div style="font-size:12px;opacity:.55;margin-bottom:14px;">閘門＝大盤趨勢(收盤&gt;MA200×0.98)｜目標部位＝波動目標÷當前波動｜資料每日自動更新</div>'
       +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:660px;">'
@@ -534,8 +537,209 @@ drawCharts();
     box.innerHTML=html+'</table></div>';
     // 位置:接在「總覽」頁最下方(原版是 document.body,會掉到側邊欄外面)
     (document.getElementById("p-overview")||document.body).appendChild(box);
+    // 開放解析結果給下方「曝險 / 進出場SOP」區塊
+    window.__SOP=data; window.dispatchEvent(new Event("sop-ready"));
   }
-  fetch(SOP_URL).then(r=>r.text()).then(t=>render(parseCSV(t))).catch(e=>console.error("SOP fetch fail",e));
+  /* Google 發布CSV 的 CDN 節點會有數分鐘不同步,同一網址可能隨機回傳舊版(整片 #DIV/0!)。
+     抓到「閘門欄全是錯誤值」就換個 cache-buster 重試;試滿仍如此才顯示資料未就緒。 */
+  async function load(){
+    for(let i=0;i<4;i++){
+      try{
+        const r=await fetch(SOP_URL+"&_="+Date.now()+"x"+i,{cache:"no-store"});
+        if(r.ok){
+          const rows=parseCSV(await r.text());
+          const h=rows.findIndex(x=>x[0]&&x[0].indexOf("標的")===0);
+          const d=h<0?[]:rows.slice(h+1).filter(x=>x[0]&&x[1]);
+          const fresh=d.some(x=>{const g=(x[5]||"").trim();return g!==""&&g.charAt(0)!=="#";});
+          if(fresh||i===3){render(rows);return;}
+        }
+      }catch(e){if(i===3)console.error("SOP fetch fail",e);}
+      await new Promise(s=>setTimeout(s,700));
+    }
+  }
+  load();
+})();
+</script>
+
+<!-- ===== 目前曝險 + 進出場 SOP (統一定義的回測數字,2026/8 重算) ===== -->
+<script>
+(function(){
+/* 回測結果:全期、訊號T日收盤/T+1執行、未計交易成本。
+   bh=買進持有 sop=套用定案SOP後 c*=年化報酬 */
+const BT={
+ "00631L":{bh:-55.1,sop:-27.1,cbh:36.1,csop:27.3,span:"2014/10–2026/08・11.8年"},
+ "SSO"   :{bh:-85.5,sop:-31.5,cbh:14.6,csop:12.0,span:"2006/06–2026/08・20.2年"},
+ "QLD"   :{bh:-84.0,sop:-31.7,cbh:24.1,csop:20.5,span:"2006/06–2026/08・20.2年"},
+ "2330"  :{bh:-68.0,sop:-68.0,cbh:22.0,csop:22.0,span:"1994/09–2026/08・32.0年"},
+ "TSM"   :{bh:-84.6,sop:-84.6,cbh:16.2,csop:16.2,span:"1997/10–2026/08・28.9年"},
+ "VOO"   :{bh:-34.3,sop:-34.3,cbh:12.9,csop:12.9,span:"2010/09–2026/08・16.0年(未含2008)"},
+ "QQQ"   :{bh:-83.0,sop:-83.0,cbh:10.1,csop:10.1,span:"1999/03–2026/08・27.5年"}};
+const LEV={"00631L":2,"SSO":2,"QLD":2,"2330":1,"TSM":1,"VOO":1,"QQQ":1};
+const RULE={
+ "00631L":{nm:"00631L 台灣50正2",tag:"擇時",
+   into:"收盤價 > MA200 × 0.98",
+   out:"收盤價 < MA200 × 0.98 → <b>全部出場</b>",
+   size:"部位 = 30% ÷ 當前20日年化波動（上限100%）",
+   say:"站上200日線才抱，跌破就全出；波動越大抱越少。這套規則把最慘跌幅從 −55% 壓到 −27%，代價是年化少賺 8.8 個百分點——那是保險費。",
+   note:"試算表的閘門改看 0050，是為了避開 GOOGLEFINANCE 對 00631L 不還原 2026/3 那次 1拆22。我的回測用還原後的 00631L 自己算，兩者不是同一條線但趨勢同步。"},
+ "SSO":{nm:"SSO 2x標普500",tag:"擇時",
+   into:"收盤價 > MA200 × 0.98",
+   out:"收盤價 < MA200 × 0.98 → <b>全部出場</b>",
+   size:"部位 = 30% ÷ 當前20日年化波動（上限100%）",
+   say:"波動低於 30% 就滿倉，超過才減。現在波動 23%，所以規則說滿倉。最慘跌幅從 −85% 壓到 −32%。",
+   note:"樣本外測試 252 條規則有 50.4% 命中率，等於擲硬幣；MA200 的超額報酬幾乎全來自 2008 那一次。留著它是為了防再來一次 2008，不是為了多賺。"},
+ "QLD":{nm:"QLD 2x那斯達克",tag:"擇時",
+   into:"收盤價 > MA200 × <b>1.02</b>",
+   out:"收盤價 < MA200 × <b>0.98</b> → <b>全部出場</b>",
+   size:"部位 = 40% ÷ 當前20日年化波動（上限100%）；<b>價格落在 ±2% 帶內 → 維持現狀不動作</b>",
+   say:"比另外兩檔多一條 2% 的緩衝帶，避免價格在均線附近來回時被巴進巴出。最慘跌幅從 −84% 壓到 −32%。",
+   note:"閘門用 QLD 自己的均線優於用 QQQ 的——這跟直覺相反，但回測就是這樣。"},
+ "2330":{nm:"2330 台積電",tag:"買進持有",
+   into:"不擇時，隨時可買",
+   out:"<b>不設出場條件</b>",
+   size:"只控<b>部位上限</b>（單一標的佔總資產的比重）",
+   say:"擇時規則怎麼配都輸給買進持有，所以不要試圖抓高低點。唯一該做的事是別押太大。",
+   note:"歷史最慘跌過 −68%（32年資料）。你能不能抱住，決定於部位大小，不是決定於規則。"},
+ "TSM":{nm:"TSM 台積ADR",tag:"買進持有",
+   into:"不擇時，隨時可買",
+   out:"<b>不設出場條件</b>",
+   size:"只控<b>部位上限</b>",
+   say:"跟 2330 同一家公司，結論也一樣：閘門怎麼配都輸，只有波動上限與部位上限有效。",
+   note:"歷史最慘跌過 −84.6%（29年資料），比 2330 更凶，因為 ADR 沒有漲跌幅限制還多一層匯率。"},
+ "VOO":{nm:"VOO 標普500",tag:"買進持有",
+   into:"不擇時，隨時可買",
+   out:"<b>不設出場條件</b>",
+   size:"無額外限制",
+   say:"擇時無效，而且加閘門是純扣分——進出成本吃掉報酬，卻沒換到保護。",
+   note:"⚠ 資料只到 2010 年起，<b>沒經歷 2000 網路泡沫和 2008 金融海嘯</b>。那個 −34% 是被資料期間美化過的，真實下檔風險更深。"},
+ "QQQ":{nm:"QQQ 那斯達克",tag:"買進持有",
+   into:"不擇時，隨時可買",
+   out:"<b>不設出場條件</b>",
+   size:"無額外限制",
+   say:"27.5 年的資料含網路泡沫。閘門在全期是贏買進持有的，但超額報酬 100% 來自 2000–2002 那一次——那是保險，不是 alpha。",
+   note:"⚠ 歷史最慘跌過 <b>−83%</b>，而且花了十幾年才回本。你原本表上寫 −36%，那是只算 2010 年之後的數字。"}};
+
+const NTk=n=>{const a=Math.abs(n);if(a>=1e8)return(n<0?"-":"")+(a/1e8).toFixed(2)+"億";
+  if(a>=1e4)return(n<0?"-":"")+Math.round(a/1e4).toLocaleString()+"萬";return Math.round(n).toLocaleString();};
+const bad=s=>{s=(s==null?"":(""+s).trim());return s===""||s.charAt(0)==="#";};
+const pctOf=s=>{const m=(""+s).match(/(\d+(?:\.\d+)?)\s*%/);return m?parseFloat(m[1])/100:null;};
+function waitReady(){return new Promise(r=>{let n=0;
+  const t=setInterval(()=>{if((window.__SOP&&window.__ALL&&window.__T)||++n>100){clearInterval(t);r();}},100);});}
+
+function build(){
+  const S=window.__SOP,ALL=window.__ALL||[],T=window.__T||{asset:0};
+  if(!S||!S.length)return;
+  const host=document.getElementById("p-overview")||document.body;
+  const items=S.map(r=>{
+    const cd=(r[0]||"").trim().split(/\s+/)[0];
+    const gate=r[5]||"",tgt=r[7]||"",lev=LEV[cd]||1;
+    const mv=ALL.filter(h=>h.code===cd).reduce((a,h)=>a+h.value,0);
+    let rec;                                   // 規則建議的部位比例
+    if(bad(gate))rec=null;                     // 資料未就緒 → 不給建議
+    else if(gate.indexOf("開")<0)rec=0;        // 閘門關 → 全部出場
+    else{const p=pctOf(tgt);rec=(p===null?1:p);}// 買進持有(固定) 視為 100%
+    return{cd,nm:(r[0]||"").trim(),lev,mv,rec,gate,tgt,timing:!!(RULE[cd]&&RULE[cd].tag==="擇時")};
+  }).filter(x=>RULE[x.cd]);
+
+  const mvSum=items.reduce((a,x)=>a+x.mv,0);
+  const noSum=items.reduce((a,x)=>a+x.mv*x.lev,0);
+  const recNo=items.reduce((a,x)=>a+(x.rec==null?x.mv*x.lev:x.mv*x.rec*x.lev),0);
+  const anyRec=items.some(x=>x.rec!=null);   // 全部未就緒時不可假裝算得出建議曝險
+  // 合計「差距」必須跟逐列同口徑:逐列是帳面要減碼的金額,不是曝險變動
+  const gapSum=items.reduce((a,x)=>{const g=(x.rec==null||!x.timing)?0:x.mv*(x.rec-1);return a+(g<-1000?g:0);},0);
+  const asset=T.asset||0;
+  const boost=noSum-mvSum;
+  const p=v=>asset?(v/asset*100).toFixed(1)+"%":"—";
+
+  /* ---------- 區塊一:目前曝險 ---------- */
+  const a=document.createElement("section");a.className="card";
+  a.innerHTML='<h3>🎯 目前曝險 <span class="tag">七檔監測標的・含槓桿放大</span></h3>'
+   +'<div class="kpis" style="margin-bottom:4px">'
+   +'<div class="kpi"><div class="k-l">監測標的帳面市值</div><div class="k-v">'+NTk(mvSum)+'</div><div class="k-s">佔總資產 '+p(mvSum)+'</div></div>'
+   +'<div class="kpi"><div class="k-l">實際市場曝險</div><div class="k-v" style="color:var(--brand2)">'+NTk(noSum)+'</div><div class="k-s">佔總資產 '+p(noSum)+'</div></div>'
+   +'<div class="kpi"><div class="k-l">槓桿多背的部位</div><div class="k-v down">'+NTk(boost)+'</div><div class="k-s">三檔2倍ETF放大出來的</div></div>'
+   +'<div class="kpi"><div class="k-l">照SOP調整後曝險</div><div class="k-v '+(anyRec?"up":"muted")+'">'
+   +(anyRec?NTk(recNo):"—")+'</div><div class="k-s">'+(anyRec?"佔總資產 "+p(recNo):"資料未就緒")+'</div></div></div>'
+   +'<div class="tbl-wrap"><table><thead><tr><th>標的</th><th>帳面市值</th><th>槓桿</th><th>實際曝險</th>'
+   +'<th>規則建議部位</th><th>差距</th><th>該做什麼</th></tr></thead><tbody>'
+   +items.map(x=>{
+      const gap=x.rec==null?null:x.mv*(x.rec-1);
+      let act,ac;
+      if(x.rec==null){act="資料未就緒";ac="muted";}
+      else if(!x.timing){act="不擇時・只控部位上限";ac="muted";}
+      else if(gap<-1000){act="減碼 "+NTk(-gap);ac="down";}
+      else{act="維持";ac="up";}
+      return '<tr><td><b>'+x.cd+'</b> '+x.nm.replace(x.cd,"").trim()+'</td>'
+        +'<td>'+NTk(x.mv)+'</td><td>'+(x.lev>1?'<b style="color:var(--brand2)">'+x.lev+'x</b>':'1x')+'</td>'
+        +'<td>'+NTk(x.mv*x.lev)+'</td>'
+        +'<td>'+(x.rec==null?"—":Math.round(x.rec*100)+"%")+'</td>'
+        +'<td class="'+(gap<-1000?"down":"muted")+'">'+(gap==null?"—":(gap<-1000?NTk(gap):"—"))+'</td>'
+        +'<td class="'+ac+'">'+act+'</td></tr>';}).join("")
+   +'<tr class="total"><td>合計</td><td>'+NTk(mvSum)+'</td><td></td><td>'+NTk(noSum)+'</td><td></td><td class="'+(gapSum<-1000?"down":"muted")+'">'
+   +(gapSum<-1000?NTk(gapSum):"—")+'</td><td class="'+(gapSum<-1000?"down":"muted")+'">'
+   +(gapSum<-1000?"共需賣出 "+NTk(-gapSum):"")+'</td></tr></tbody></table></div>'
+   +'<div class="note" style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px;line-height:1.9">'
+   +'<b style="color:var(--ink);font-size:13.5px">白話講,「曝險」是什麼?</b><br>'
+   +'你帳上這七檔加起來值 <b>'+NTk(mvSum)+'</b>。但其中 00631L、SSO、QLD 是<b>2 倍槓桿 ETF</b>——它們拿你 1 塊錢去買 2 塊錢的東西。'
+   +'所以你真正在市場上承受漲跌的金額不是 '+NTk(mvSum)+'，而是 <b style="color:var(--brand2)">'+NTk(noSum)+'</b>，'
+   +'等於憑空多背了 <b>'+NTk(boost)+'</b> 的部位。<br><br>'
+   +'<b style="color:var(--ink);font-size:13.5px">這代表什麼?</b><br>'
+   +'市場整體跌 10%，你不是少 '+NTk(mvSum*0.1)+'，而是少 <b class="down">'+NTk(noSum*0.1)+'</b>。'
+   +'跌 20% 就是 <b class="down">'+NTk(noSum*0.2)+'</b>。你的總資產是 '+NTk(asset)+'，所以那會是總資產的 <b>'+p(noSum*0.2)+'</b>。<br><br>'
+   +'<b style="color:var(--ink);font-size:13.5px">規則現在叫你怎麼做?</b><br>'
+   +(!anyRec
+     ? '<b class="down">試算表的訊號欄現在抓不到值,所以這裡不給建議。</b>不是「不用調整」,是「算不出來」——先把「多檔SOP監測儀表板」的公式修好,這段會自動出現數字。'
+     : recNo<noSum-10000
+     ? '照定案 SOP 調整後，曝險會降到 <b class="up">'+NTk(recNo)+'</b>（佔總資產 '+p(recNo)+'）。差額 <b>'+NTk(noSum-recNo)+'</b> 該轉成現金。'
+       +'主要是因為波動變高——波動越大，同樣的錢承受的震盪越大，所以規則叫你放少一點。'
+     : '目前規則建議的曝險跟你實際持有的差不多，不需要大動作。')
+   +'<br><br><span style="opacity:.75">※ 上面假設你目前是「滿倉持有」。如果你手上這幾檔本來就沒放滿，實際要調整的金額會比表上少。'
+   +'「不擇時」的四檔不列入減碼建議——它們的規則是買進持有，只控部位上限。</span></div>';
+  host.appendChild(a);
+
+  /* ---------- 區塊二:進出場 SOP ---------- */
+  const timing=items.filter(x=>x.timing),hold=items.filter(x=>!x.timing);
+  function cardOf(x){
+    const R=RULE[x.cd],B=BT[x.cd];
+    const cut=B.sop>B.bh+0.5;
+    return '<div style="border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-top:12px;background:var(--panel2)">'
+      +'<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:11px">'
+      +'<b style="font-size:15.5px">'+R.nm+'</b>'
+      +(x.lev>1?'<span style="background:var(--brand-soft);color:var(--brand2);padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700">'+x.lev+'倍槓桿</span>':'')
+      +'<span style="margin-left:auto;font-size:11.5px;color:var(--muted)">'+B.span+'</span></div>'
+      +'<table style="width:100%;font-size:13.5px;border-collapse:collapse">'
+      +'<tr><td style="width:74px;padding:5px 0;color:var(--muted);vertical-align:top">進場</td><td style="text-align:left;padding:5px 0">'+R.into+'</td></tr>'
+      +'<tr><td style="padding:5px 0;color:var(--muted);vertical-align:top">出場</td><td style="text-align:left;padding:5px 0">'+R.out+'</td></tr>'
+      +'<tr><td style="padding:5px 0;color:var(--muted);vertical-align:top">部位大小</td><td style="text-align:left;padding:5px 0">'+R.size+'</td></tr></table>'
+      +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:12px 0 10px">'
+      +'<div style="flex:1;min-width:150px;background:var(--panel);border-radius:10px;padding:9px 12px">'
+      +'<div style="font-size:11.5px;color:var(--muted)">買進持有最慘跌幅</div>'
+      +'<div style="font-size:18px;font-weight:800" class="down">'+B.bh.toFixed(1)+'%</div></div>'
+      +'<div style="flex:1;min-width:150px;background:var(--panel);border-radius:10px;padding:9px 12px">'
+      +'<div style="font-size:11.5px;color:var(--muted)">'+(cut?"套用本SOP後":"本SOP後(同買進持有)")+'</div>'
+      +'<div style="font-size:18px;font-weight:800" class="'+(cut?"up":"down")+'">'+B.sop.toFixed(1)+'%</div></div>'
+      +'<div style="flex:1;min-width:150px;background:var(--panel);border-radius:10px;padding:9px 12px">'
+      +'<div style="font-size:11.5px;color:var(--muted)">年化報酬 買持→SOP</div>'
+      +'<div style="font-size:18px;font-weight:800">'+B.cbh.toFixed(1)+'% → '+B.csop.toFixed(1)+'%</div></div></div>'
+      +'<div style="font-size:13px;line-height:1.85;color:var(--ink);opacity:.9">'+R.say+'</div>'
+      +'<div style="font-size:12.5px;line-height:1.8;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">'+R.note+'</div></div>';
+  }
+  const b=document.createElement("section");b.className="card";
+  b.innerHTML='<h3>📋 進出場 SOP <span class="tag">回測數字已統一定義・2026/8 重算</span></h3>'
+   +'<div class="note" style="margin:0 0 6px;line-height:1.85">'
+   +'<b style="color:var(--ink)">怎麼看這一頁:</b>「最慘跌幅」是<b>最大回撤</b>——從最高點跌到最低點的幅度。'
+   +'例如 −80% 的意思是,如果你在最高點放進 100 萬,中途最慘只剩 20 萬,而且要漲回 400% 才能回本。<br>'
+   +'下面每檔都列<b>兩個</b>數字:什麼都不做的跌幅、和套用規則後的跌幅。<b>兩個數字一樣</b>的,代表這檔的定案結論就是買進持有,規則不會救你,只能靠部位大小控制。<br>'
+   +'<span style="color:var(--brand2)">全部都是全期資料重算,已修正原本試算表「只算 2010 年之後」的問題。</span></div>'
+   +'<div style="margin-top:16px"><div style="font-size:13.5px;font-weight:800;color:var(--brand2);margin-bottom:2px">■ 擇時組・規則會叫你出場</div>'
+   +'<div style="font-size:12.5px;color:var(--muted)">這三檔是槓桿 ETF,跌起來會要命,所以用趨勢閘門＋波動調整部位。</div>'
+   +timing.map(cardOf).join("")+'</div>'
+   +'<div style="margin-top:24px"><div style="font-size:13.5px;font-weight:800;color:var(--brand2);margin-bottom:2px">■ 買進持有組・規則不擇時</div>'
+   +'<div style="font-size:12.5px;color:var(--muted)">這四檔回測過大量規則,擇時都輸給什麼都不做。唯一有效的控制手段是部位上限。</div>'
+   +hold.map(cardOf).join("")+'</div>';
+  host.appendChild(b);
+}
+waitReady().then(build).catch(e=>console.error("曝險/SOP區塊建立失敗:",e&&e.stack||e));
 })();
 </script>
 </body>
