@@ -491,5 +491,52 @@ function drawCharts(){
 drawCharts();
 })();
 </script>
+
+<!-- ===== 今日 SOP 動作 (資料源:SOP監測分頁,每日自動更新) ===== -->
+<script>
+(function(){
+  const SOP_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vQQ_fLDBDxZna2HQVBLwBiV0TPjGptuylIEQbEWpIqHj6wLqKR70AXbIjDh3mR5jwHoecXQ5khmap3V/pub?gid=414162624&single=true&output=csv";
+  function parseCSV(t){const R=[];let r=[],f="",q=false;t=t.replace(/\r/g,"");
+    for(let i=0;i<t.length;i++){const c=t[i];
+      if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++;}else q=false;}else f+=c;}
+      else{if(c=='"')q=true;else if(c==','){r.push(f);f="";}else if(c=='\n'){r.push(f);R.push(r);r=[];f="";}else f+=c;}}
+    if(f.length||r.length){r.push(f);R.push(r);}return R;}
+  function render(rows){
+    const h=rows.findIndex(r=>r[0]&&r[0].indexOf("標的")===0); if(h<0)return;
+    const data=rows.slice(h+1).filter(r=>r[0]&&r[1]);
+    const box=document.createElement("section");
+    box.style.cssText="max-width:1100px;margin:28px auto;padding:16px;font-family:inherit;color:inherit;";
+    let html='<h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">今日 SOP 動作</h2>'
+      +'<div style="font-size:12px;opacity:.55;margin-bottom:14px;">閘門＝大盤趨勢(收盤&gt;MA200×0.98)｜目標部位＝波動目標÷當前波動｜資料每日自動更新</div>'
+      +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:660px;">'
+      +'<tr style="text-align:left;opacity:.5;font-size:12px;"><th style="padding:8px;">標的</th><th>現價</th><th>閘門</th><th>波動</th><th>目標部位</th><th>今日動作</th><th style="text-align:right;padding-right:8px;">距高</th></tr>';
+    data.forEach(r=>{
+      // 防呆:空白或 #DIV/0!/#REF! 等錯誤值 = 資料未就緒,絕不可當成「出場訊號」
+      const bad=s=>{s=(s==null?"":(""+s).trim());return s===""||s.charAt(0)==="#";};
+      const name=r[0],px=r[2],gate=r[5]||"",vol=r[6]||"",tgt=r[7]||"",dd=parseFloat(r[11]);
+      const lev=/00631L|SSO|QLD/.test(name);
+      const na=bad(gate), open=!na&&gate.indexOf("開")>=0;
+      let act,col;
+      if(na){act="資料未就緒";col="#8b8b98";}
+      else if(!open){act="出場（閘門關）";col="#e0654b";}
+      else if(lev){act="持有 "+(bad(tgt)?"(目標部位未就緒)":tgt);col=bad(tgt)?"#8b8b98":"#3fae87";}
+      else{act="續抱";col="#3fae87";}
+      const ddOK=!isNaN(dd)&&dd>-0.5&&dd<0;
+      if(ddOK&&dd<-0.2)act+="　⚠近高"+Math.round(dd*100)+"%";
+      const pillC=na?["rgba(139,139,152,.18)","#8b8b98","—"]:(open?["rgba(63,174,135,.18)","#3fae87","開"]:["rgba(224,101,75,.18)","#e0654b","關"]);
+      const pill='<span style="background:'+pillC[0]+';color:'+pillC[1]+';padding:2px 11px;border-radius:20px;font-size:12px;">'+pillC[2]+'</span>';
+      html+='<tr style="border-top:1px solid rgba(128,128,128,.18);">'
+        +'<td style="padding:11px 8px;font-weight:500;">'+name+'</td><td>'+px+'</td><td>'+pill+'</td>'
+        +'<td style="opacity:.75;">'+(bad(vol)?"—":vol)+'</td><td>'+(bad(tgt)?"—":tgt)+'</td>'
+        +'<td style="color:'+col+';font-weight:500;">'+act+'</td>'
+        +'<td style="text-align:right;padding-right:8px;opacity:.65;">'+(ddOK?(Math.round(dd*1000)/10)+"%":"—")+'</td></tr>';
+    });
+    box.innerHTML=html+'</table></div>';
+    // 位置:接在「總覽」頁最下方(原版是 document.body,會掉到側邊欄外面)
+    (document.getElementById("p-overview")||document.body).appendChild(box);
+  }
+  fetch(SOP_URL).then(r=>r.text()).then(t=>render(parseCSV(t))).catch(e=>console.error("SOP fetch fail",e));
+})();
+</script>
 </body>
 </html>
