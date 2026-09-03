@@ -504,12 +504,16 @@ window.dispatchEvent(new Event("dash-ready"));
       if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++;}else q=false;}else f+=c;}
       else{if(c=='"')q=true;else if(c==','){r.push(f);f="";}else if(c=='\n'){r.push(f);R.push(r);r=[];f="";}else f+=c;}}
     if(f.length||r.length){r.push(f);R.push(r);}return R;}
-  function render(rows){
-    const h=rows.findIndex(r=>r[0]&&r[0].indexOf("標的")===0); if(h<0)return;
-    const data=rows.slice(h+1).filter(r=>r[0]&&r[1]);
+  /* 閘門只認「開」「關」兩個值。其餘(空白/#DIV/0!/「載入中…」/任何未預期字串)一律當資料未就緒。
+     絕不可把「不是開」直接當成「關」——那會把試算表還在算的狀態誤報成賣出訊號。 */
+  const GATE=s=>{s=(s==null?"":(""+s).trim());return s==="開"?1:(s==="關"?0:null);};
+  function render(data,staleTs){
     const box=document.createElement("section");
     box.className="card";
+    const ago=staleTs?Math.round((Date.now()-staleTs)/60000):0;
     let html='<h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">今日 SOP 動作</h2>'
+      +(staleTs?'<div style="background:rgba(240,136,62,.13);color:#f6a85f;border-radius:9px;padding:8px 12px;font-size:12.5px;margin-bottom:10px">'
+        +'⚠ Google 那邊剛好回舊快取,以下顯示的是 '+(ago<60?ago+" 分鐘":Math.round(ago/60)+" 小時")+'前抓到的最後一份有效資料。重整頁面通常就會拿到最新的。</div>':'')
       +'<div style="font-size:12px;opacity:.55;margin-bottom:14px;">閘門＝大盤趨勢(收盤&gt;MA200×0.98)｜目標部位＝波動目標÷當前波動｜資料每日自動更新</div>'
       +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:660px;">'
       +'<tr style="text-align:left;opacity:.5;font-size:12px;"><th style="padding:8px;">標的</th><th>現價</th><th>閘門</th><th>波動</th><th>目標部位</th><th>今日動作</th><th style="text-align:right;padding-right:8px;">距高</th></tr>';
@@ -518,7 +522,7 @@ window.dispatchEvent(new Event("dash-ready"));
       const bad=s=>{s=(s==null?"":(""+s).trim());return s===""||s.charAt(0)==="#";};
       const name=r[0],px=r[2],gate=r[5]||"",vol=r[6]||"",tgt=r[7]||"",dd=parseFloat(r[11]);
       const lev=/00631L|SSO|QLD/.test(name);
-      const na=bad(gate), open=!na&&gate.indexOf("開")>=0;
+      const g=GATE(gate); const na=(g===null), open=(g===1);
       let act,col;
       if(na){act="資料未就緒";col="#8b8b98";}
       else if(!open){act="出場（閘門關）";col="#e0654b";}
@@ -542,20 +546,31 @@ window.dispatchEvent(new Event("dash-ready"));
   }
   /* Google 發布CSV 的 CDN 節點會有數分鐘不同步,同一網址可能隨機回傳舊版(整片 #DIV/0!)。
      抓到「閘門欄全是錯誤值」就換個 cache-buster 重試;試滿仍如此才顯示資料未就緒。 */
+  const CKEY="sopFeedCache_v1";
   async function load(){
-    for(let i=0;i<4;i++){
+    let lastAny=null;
+    for(let i=0;i<5;i++){
       try{
         const r=await fetch(SOP_URL+"&_="+Date.now()+"x"+i,{cache:"no-store"});
         if(r.ok){
           const rows=parseCSV(await r.text());
           const h=rows.findIndex(x=>x[0]&&x[0].indexOf("標的")===0);
           const d=h<0?[]:rows.slice(h+1).filter(x=>x[0]&&x[1]);
-          const fresh=d.some(x=>{const g=(x[5]||"").trim();return g!==""&&g.charAt(0)!=="#";});
-          if(fresh||i===3){render(rows);return;}
+          if(d.length){
+            lastAny=d;
+            if(d.some(x=>GATE(x[5])!==null)){       // 閘門是「開/關」= 抽到好節點
+              try{localStorage.setItem(CKEY,JSON.stringify({t:Date.now(),d:d}));}catch(e){}
+              render(d,null); return;
+            }
+          }
         }
-      }catch(e){if(i===3)console.error("SOP fetch fail",e);}
-      await new Promise(s=>setTimeout(s,700));
+      }catch(e){if(i===4)console.error("SOP fetch fail",e);}
+      await new Promise(s=>setTimeout(s,600));
     }
+    // 五次都抽到壞節點 → 退回上次成功的快照,並在畫面上標明是舊的
+    try{const c=JSON.parse(localStorage.getItem(CKEY)||"null");
+        if(c&&c.d&&c.d.length){render(c.d,c.t||Date.now());return;}}catch(e){}
+    if(lastAny)render(lastAny,null);               // 連快照都沒有,才顯示未就緒
   }
   load();
 })();
