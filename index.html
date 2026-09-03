@@ -507,8 +507,10 @@ window.dispatchEvent(new Event("dash-ready"));
   /* 閘門只認「開」「關」兩個值。其餘(空白/#DIV/0!/「載入中…」/任何未預期字串)一律當資料未就緒。
      絕不可把「不是開」直接當成「關」——那會把試算表還在算的狀態誤報成賣出訊號。 */
   const GATE=s=>{s=(s==null?"":(""+s).trim());return s==="開"?1:(s==="關"?0:null);};
+  let sopBox=null;
   function render(data,staleTs){
-    const box=document.createElement("section");
+    // 重複使用同一個容器:先用手上有的資料把畫面填出來,之後抓到好資料再覆蓋
+    const box=sopBox||(sopBox=document.createElement("section"));
     box.className="card";
     const ago=staleTs?Math.round((Date.now()-staleTs)/60000):0;
     let html='<h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">今日 SOP 動作</h2>'
@@ -540,16 +542,19 @@ window.dispatchEvent(new Event("dash-ready"));
     });
     box.innerHTML=html+'</table></div>';
     // 位置:接在「總覽」頁最下方(原版是 document.body,會掉到側邊欄外面)
-    (document.getElementById("p-overview")||document.body).appendChild(box);
+    if(!box.parentNode)(document.getElementById("p-overview")||document.body).appendChild(box);
     // 開放解析結果給下方「曝險 / 進出場SOP」區塊
     window.__SOP=data; window.dispatchEvent(new Event("sop-ready"));
   }
   /* Google 發布CSV 的 CDN 節點會有數分鐘不同步,同一網址可能隨機回傳舊版(整片 #DIV/0!)。
      抓到「閘門欄全是錯誤值」就換個 cache-buster 重試;試滿仍如此才顯示資料未就緒。 */
   const CKEY="sopFeedCache_v1";
+  const snap=()=>{try{return JSON.parse(localStorage.getItem(CKEY)||"null");}catch(e){return null;}};
+  /* 先把畫面填出來,再背景重試。網路慢時整輪重試可能要 30 秒以上,
+     不能讓使用者在那之前盯著一片空白。 */
   async function load(){
-    let lastAny=null;
-    for(let i=0;i<5;i++){
+    let shown=false;
+    for(let i=0;i<4;i++){
       try{
         const r=await fetch(SOP_URL+"&_="+Date.now()+"x"+i,{cache:"no-store"});
         if(r.ok){
@@ -557,20 +562,20 @@ window.dispatchEvent(new Event("dash-ready"));
           const h=rows.findIndex(x=>x[0]&&x[0].indexOf("標的")===0);
           const d=h<0?[]:rows.slice(h+1).filter(x=>x[0]&&x[1]);
           if(d.length){
-            lastAny=d;
-            if(d.some(x=>GATE(x[5])!==null)){       // 閘門是「開/關」= 抽到好節點
+            if(d.some(x=>GATE(x[5])!==null)){       // 閘門是「開/關」= 資料有效
               try{localStorage.setItem(CKEY,JSON.stringify({t:Date.now(),d:d}));}catch(e){}
-              render(d,null); return;
+              render(d,null); return;               // 好資料會覆蓋掉先前顯示的暫時內容
+            }
+            if(!shown){                             // 這次是壞的:先拿快照頂著,沒快照就顯示未就緒
+              const c=snap();
+              render(c&&c.d&&c.d.length?c.d:d, c&&c.d&&c.d.length?c.t:null);
+              shown=true;
             }
           }
         }
-      }catch(e){if(i===4)console.error("SOP fetch fail",e);}
+      }catch(e){if(i===3)console.error("SOP fetch fail",e);}
       await new Promise(s=>setTimeout(s,600));
     }
-    // 五次都抽到壞節點 → 退回上次成功的快照,並在畫面上標明是舊的
-    try{const c=JSON.parse(localStorage.getItem(CKEY)||"null");
-        if(c&&c.d&&c.d.length){render(c.d,c.t||Date.now());return;}}catch(e){}
-    if(lastAny)render(lastAny,null);               // 連快照都沒有,才顯示未就緒
   }
   load();
 })();
@@ -645,6 +650,8 @@ function build(){
   const S=window.__SOP,ALL=window.__ALL||[],T=window.__T||{asset:0};
   if(!S||!S.length)return;
   const host=document.getElementById("p-overview")||document.body;
+  // SOP 資料可能被後續重試覆蓋 → 先清掉上一輪產生的區塊,避免疊加
+  ["expoCard","sopRuleCard"].forEach(id=>{const el=document.getElementById(id);if(el)el.remove();});
   const items=S.map(r=>{
     const cd=(r[0]||"").trim().split(/\s+/)[0];
     const gate=r[5]||"",tgt=r[7]||"",lev=LEV[cd]||1;
@@ -667,7 +674,7 @@ function build(){
   const p=v=>asset?(v/asset*100).toFixed(1)+"%":"—";
 
   /* ---------- 區塊一:目前曝險 ---------- */
-  const a=document.createElement("section");a.className="card";
+  const a=document.createElement("section");a.className="card";a.id="expoCard";
   a.innerHTML='<h3>🎯 目前曝險 <span class="tag">七檔監測標的・含槓桿放大</span></h3>'
    +'<div class="kpis" style="margin-bottom:4px">'
    +'<div class="kpi"><div class="k-l">監測標的帳面市值</div><div class="k-v">'+NTk(mvSum)+'</div><div class="k-s">佔總資產 '+p(mvSum)+'</div></div>'
@@ -739,7 +746,7 @@ function build(){
       +'<div style="font-size:13px;line-height:1.85;color:var(--ink);opacity:.9">'+R.say+'</div>'
       +'<div style="font-size:12.5px;line-height:1.8;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">'+R.note+'</div></div>';
   }
-  const b=document.createElement("section");b.className="card";
+  const b=document.createElement("section");b.className="card";b.id="sopRuleCard";
   b.innerHTML='<h3>📋 進出場 SOP <span class="tag">回測數字已統一定義・2026/8 重算</span></h3>'
    +'<div class="note" style="margin:0 0 6px;line-height:1.85">'
    +'<b style="color:var(--ink)">怎麼看這一頁:</b>「最慘跌幅」是<b>最大回撤</b>——從最高點跌到最低點的幅度。'
@@ -754,7 +761,10 @@ function build(){
    +hold.map(cardOf).join("")+'</div>';
   host.appendChild(b);
 }
-waitReady().then(build).catch(e=>console.error("曝險/SOP區塊建立失敗:",e&&e.stack||e));
+const safeBuild=()=>{try{build();}catch(e){console.error("曝險/SOP區塊建立失敗:",e&&e.stack||e);}};
+waitReady().then(safeBuild);
+// SOP 重試抓到更新的資料時會再發一次 sop-ready → 曝險與規則區塊跟著重算
+window.addEventListener("sop-ready",()=>{if(window.__ALL&&window.__T)safeBuild();});
 })();
 </script>
 </body>
