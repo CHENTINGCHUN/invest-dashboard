@@ -13,8 +13,27 @@
     --ink:#ecebe8; --muted:#8b8b98; --brand:#f0883e; --brand2:#f6a85f;
     --brand-soft:rgba(240,136,62,.13);
     --up:#3fb950; --down:#f85149;
+    --na:#8b8b98; --na-soft:rgba(139,139,152,.18);
+    --up-soft:rgba(63,185,80,.16); --down-soft:rgba(248,81,73,.16);
     --c1:#f0883e; --c2:#4a9eda; --c3:#e8b04b; --c4:#6b6b7a; --c5:#9b7ad1; --c6:#54c2a8;
   }
+  /* 橘白主題:高對比,文字與圖表在白底上都清楚 */
+  :root[data-theme="light"]{
+    --bg:#FAF7F2; --panel:#FFFFFF; --panel2:#F4EDE3; --line:#E3D7C6;
+    --ink:#1F1811; --muted:#655849; --brand:#C25A08; --brand2:#9A4506;
+    --brand-soft:rgba(194,90,8,.10);
+    --up:#1A6B42; --down:#B02E1F;
+    --na:#655849; --na-soft:rgba(101,88,73,.14);
+    --up-soft:rgba(26,107,66,.13); --down-soft:rgba(176,46,31,.13);
+    --c1:#C25A08; --c2:#245E8F; --c3:#9C6F14; --c4:#7A6D5D; --c5:#6B4E96; --c6:#1F7A68;
+  }
+  :root[data-theme="light"] .kpi,
+  :root[data-theme="light"] .card,
+  :root[data-theme="light"] .acc{box-shadow:0 1px 2px rgba(31,24,17,.05)}
+  .theme-btn{display:flex;align-items:center;gap:9px;width:100%;border:1px solid var(--line);
+    background:var(--panel2);color:var(--muted);font-family:inherit;font-size:13.5px;font-weight:700;
+    padding:10px 12px;border-radius:11px;cursor:pointer;margin-top:14px;transition:.13s}
+  .theme-btn:hover{color:var(--ink);border-color:var(--brand)}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;
     background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55}
@@ -110,6 +129,7 @@
   <aside id="side">
     <div class="logo"><div class="mark">📈</div><b>投資儀表板</b></div>
     <nav class="nav" id="nav"></nav>
+    <button class="theme-btn" id="themeBtn"><span id="themeIc">☀️</span><span id="themeTx">橘白模式</span></button>
     <div class="side-foot">
       資料來源:Google Drive<br>持股明細-CLAUDE<br>基準日 <b id="asOf2"></b><br>
       <span style="color:#6b6b7a">更新試算表後重讀即同步</span>
@@ -288,7 +308,13 @@ const pct=n=>(n>=0?"+":"")+n.toFixed(2)+"%";
 const cl=n=>n>=0?"up":"down";
 const sgn=n=>(n>=0?"+":"")+NT(n);
 const sgk=n=>(n>=0?"+":"")+NTk(n);
-const PAL=["#f0883e","#4a9eda","#e8b04b","#9b7ad1","#54c2a8","#d9695f","#7f9b5b","#c98fb0","#6b9ec0","#cf9b5b"];
+// 兩套調色盤:深色底用亮色,橘白底用深色(確保白底上的對比夠)
+const PALS={dark :["#f0883e","#4a9eda","#e8b04b","#9b7ad1","#54c2a8","#d9695f","#7f9b5b","#c98fb0","#6b9ec0","#cf9b5b"],
+            light:["#C25A08","#245E8F","#9C6F14","#6B4E96","#1F7A68","#A63E32","#5C7038","#94537A","#3D6E92","#8A6420"]};
+let THEME=(function(){try{return localStorage.getItem("dashTheme")==="light"?"light":"dark";}catch(e){return "dark";}})();
+document.documentElement.setAttribute("data-theme",THEME);
+let PAL=PALS[THEME];
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 function flatten(){const o=[];
   DATA.tw.forEach(s=>s.lots.forEach(([ow,sh,c,v])=>o.push({cat:"台股",owner:ow,code:s.code,name:s.name,shares:sh,cost:c,value:v,px:s.px,div:s.div})));
@@ -343,9 +369,12 @@ document.getElementById("allocBars").innerHTML=alloc.map(([n,v,c])=>`<div class=
 const acctMap={};ALL.forEach(h=>acctMap[h.owner]=(acctMap[h.owner]||0)+h.value);
 const acctArr=Object.entries(acctMap).sort((a,b)=>b[1]-a[1]);
 const acctMax=Math.max(...acctArr.map(a=>a[1]));
-document.getElementById("acctBars").innerHTML=acctArr.map(([n,v],i)=>`<div class="bar-row">
-  <div class="lab" style="font-size:13px">${n}</div><div class="track"><i style="width:${v/acctMax*100}%;background:${PAL[i%PAL.length]}"></i></div>
-  <div class="val">${NTk(v)}</div></div>`).join("");
+function paintAcctBars(){
+  document.getElementById("acctBars").innerHTML=acctArr.map(([n,v],i)=>`<div class="bar-row">
+    <div class="lab" style="font-size:13px">${n}</div><div class="track"><i style="width:${v/acctMax*100}%;background:${PAL[i%PAL.length]}"></i></div>
+    <div class="val">${NTk(v)}</div></div>`).join("");
+}
+paintAcctBars();
 // 類別損益表
 const ct=[`<thead><tr><th>類別</th><th>現值</th><th>未實現</th><th>報酬率</th></tr></thead><tbody>`];
 DATA.pnl.forEach(([n,c,v])=>{const p=v-c;ct.push(`<tr><td>${n}</td><td>${NTk(v)}</td>
@@ -462,12 +491,12 @@ document.getElementById("fundTable").innerHTML=fr.join("");
 const CHARTS=[];
 function drawCharts(){
   if(typeof Chart==="undefined")return;
-  Chart.defaults.color="#8b8b98";Chart.defaults.font.family="'Microsoft JhengHei',sans-serif";
+  Chart.defaults.color=cssv("--muted");Chart.defaults.font.family="'Microsoft JhengHei',sans-serif";
   Chart.defaults.animation=false;Chart.defaults.maintainAspectRatio=false;
-  const grid="rgba(255,255,255,.06)";
+  const grid=cssv("--line"),UP=cssv("--up"),DN=cssv("--down"),PANEL=cssv("--panel");
   const reg=c=>{CHARTS.push(c);return c;};
   const dough=(id,labels,data,colors)=>reg(new Chart(document.getElementById(id),{type:"doughnut",
-    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:"#16161d"}]},
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:PANEL}]},
     options:{plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:12,padding:10}},
       tooltip:{callbacks:{label:c=>` ${c.label}: ${NT(c.raw)}`}}},cutout:"58%"}}));
   const hbar=(id,labels,data,colors)=>reg(new Chart(document.getElementById(id),{type:"bar",
@@ -480,15 +509,31 @@ function drawCharts(){
       scales:{y:{grid:{color:grid},ticks:{callback:v=>NTk(v)}},x:{grid:{display:false}}}}}));
 
   dough("cFund",DATA.funds.map(f=>f[1]),DATA.funds.map(f=>f[4]),PAL);
-  dough("cAlloc",alloc.map(a=>a[0]),alloc.map(a=>a[1]),["#f0883e","#4a9eda","#e8b04b","#6b6b7a"]);
+  dough("cAlloc",alloc.map(a=>a[0]),alloc.map(a=>a[1]),[cssv("--c1"),cssv("--c2"),cssv("--c3"),cssv("--c4")]);
   hbar("cAcct",acctArr.map(a=>a[0]),acctArr.map(a=>a[1]),acctArr.map((_,i)=>PAL[i%PAL.length]));
   const codeMap={};ALL.forEach(h=>codeMap[h.name]=(codeMap[h.name]||0)+h.value);
   const top=Object.entries(codeMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
   hbar("cTop",top.map(t=>t[0]),top.map(t=>t[1]),top.map((_,i)=>PAL[i%PAL.length]));
-  vbar("cYear",DATA.yearRealized.map(y=>y[0]+"年"),DATA.yearRealized.map(y=>y[1]),DATA.yearRealized.map(()=>"#3fb950"));
-  vbar("cCat",DATA.pnl.map(p=>p[0]),DATA.pnl.map(p=>p[2]-p[1]),DATA.pnl.map(p=>(p[2]-p[1])>=0?"#3fb950":"#f85149"));
+  vbar("cYear",DATA.yearRealized.map(y=>y[0]+"年"),DATA.yearRealized.map(y=>y[1]),DATA.yearRealized.map(()=>UP));
+  vbar("cCat",DATA.pnl.map(p=>p[0]),DATA.pnl.map(p=>p[2]-p[1]),DATA.pnl.map(p=>(p[2]-p[1])>=0?UP:DN));
 }
 drawCharts();
+
+/* ============================ 主題切換 ============================ */
+(function(){
+  const btn=document.getElementById("themeBtn"),ic=document.getElementById("themeIc"),tx=document.getElementById("themeTx");
+  const label=()=>{const light=THEME==="light";ic.textContent=light?"🌙":"☀️";tx.textContent=light?"深色模式":"橘白模式";};
+  label();
+  btn.onclick=()=>{
+    THEME=THEME==="light"?"dark":"light";
+    document.documentElement.setAttribute("data-theme",THEME);
+    try{localStorage.setItem("dashTheme",THEME);}catch(e){}
+    PAL=PALS[THEME]; label();
+    // CSS 變數會自動生效;Chart.js 與用 PAL 畫的 bar 要手動重繪
+    CHARTS.forEach(c=>{try{c.destroy();}catch(e){}}); CHARTS.length=0;
+    paintAcctBars(); drawCharts();
+  };
+})();
 // 開放給下方「SOP 監測」區塊使用(持股現值 + 總資產)
 window.__DATA=DATA; window.__T=T; window.__ALL=ALL;
 window.dispatchEvent(new Event("dash-ready"));
@@ -514,7 +559,7 @@ window.dispatchEvent(new Event("dash-ready"));
     box.className="card";
     const ago=staleTs?Math.round((Date.now()-staleTs)/60000):0;
     let html='<h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">今日 SOP 動作</h2>'
-      +(staleTs?'<div style="background:rgba(240,136,62,.13);color:#f6a85f;border-radius:9px;padding:8px 12px;font-size:12.5px;margin-bottom:10px">'
+      +(staleTs?'<div style="background:var(--brand-soft);color:var(--brand2);border:1px solid var(--brand);border-radius:9px;padding:8px 12px;font-size:12.5px;margin-bottom:10px">'
         +'⚠ Google 那邊剛好回舊快取,以下顯示的是 '+(ago<60?ago+" 分鐘":Math.round(ago/60)+" 小時")+'前抓到的最後一份有效資料。重整頁面通常就會拿到最新的。</div>':'')
       +'<div style="font-size:12px;opacity:.55;margin-bottom:14px;">閘門＝大盤趨勢(收盤&gt;MA200×0.98)｜目標部位＝波動目標÷當前波動｜資料每日自動更新</div>'
       +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:660px;">'
@@ -526,15 +571,15 @@ window.dispatchEvent(new Event("dash-ready"));
       const lev=/00631L|SSO|QLD/.test(name);
       const g=GATE(gate); const na=(g===null), open=(g===1);
       let act,col;
-      if(na){act="資料未就緒";col="#8b8b98";}
-      else if(!open){act="出場（閘門關）";col="#e0654b";}
-      else if(lev){act="持有 "+(bad(tgt)?"(目標部位未就緒)":tgt);col=bad(tgt)?"#8b8b98":"#3fae87";}
-      else{act="續抱";col="#3fae87";}
+      if(na){act="資料未就緒";col="var(--na)";}
+      else if(!open){act="出場（閘門關）";col="var(--down)";}
+      else if(lev){act="持有 "+(bad(tgt)?"(目標部位未就緒)":tgt);col=bad(tgt)?"var(--na)":"var(--up)";}
+      else{act="續抱";col="var(--up)";}
       const ddOK=!isNaN(dd)&&dd>-0.5&&dd<0;
       if(ddOK&&dd<-0.2)act+="　⚠近高"+Math.round(dd*100)+"%";
-      const pillC=na?["rgba(139,139,152,.18)","#8b8b98","—"]:(open?["rgba(63,174,135,.18)","#3fae87","開"]:["rgba(224,101,75,.18)","#e0654b","關"]);
+      const pillC=na?["var(--na-soft)","var(--na)","—"]:(open?["var(--up-soft)","var(--up)","開"]:["var(--down-soft)","var(--down)","關"]);
       const pill='<span style="background:'+pillC[0]+';color:'+pillC[1]+';padding:2px 11px;border-radius:20px;font-size:12px;">'+pillC[2]+'</span>';
-      html+='<tr style="border-top:1px solid rgba(128,128,128,.18);">'
+      html+='<tr style="border-top:1px solid var(--line);">'
         +'<td style="padding:11px 8px;font-weight:500;">'+name+'</td><td>'+px+'</td><td>'+pill+'</td>'
         +'<td style="opacity:.75;">'+(bad(vol)?"—":vol)+'</td><td>'+(bad(tgt)?"—":tgt)+'</td>'
         +'<td style="color:'+col+';font-weight:500;">'+act+'</td>'
